@@ -1,0 +1,221 @@
+---
+title: "Chapter 6: Comparing Statistical Tests"
+output: html_document
+---
+
+
+# 6.1 Data for Comparing Groups ----
+```{r}
+
+# Check Data - Constructed from previous chapters
+
+summary(seg.df)
+
+```
+
+# 6.2 Testing Group Frequencies: chisq.test() ----
+```{r}
+# Simple chisq.test on 95 obs
+# Case 1:
+tmp.tab <- table(rep(c(1:4), times = c(25, 25, 25, 20)))
+tmp.tab
+
+chisq.test(tmp.tab)
+# This shows that we have an 85% chance of seeing a data set with differences similar to or greater than those in our table, if the null hypothesis is true.  This data shows no evidence that the groups inteh population are of unequal size, under the assumption of random sampling
+
+# Compare to
+# Case 2:
+tmp.tab <- table(rep(c(1:4), times = c(25, 25, 25, 10)))
+tmp.tab
+
+chisq.test(tmp.tab)
+# We can reject the null hypothesis of no difference between the cells with 95% confidence p-value = 0.04724
+
+# Case 3 - same proportions but smaller sample size:
+tmp.tab <- tmp.tab/5
+tmp.tab
+
+chisq.test(tmp.tab)
+# This shows a non-significant result even though the proportions are the same, the sample size being smaller brings our confidence level down.  Statistical signifigance is dependent on sample size as well as on teh real effect.
+
+# Back to the real data - Is there a difference in segment size?
+chisq.test(table(seg.df$Segment))
+# With a p-value = 0.0006035, our sample does not support the hypothesis that there is an identical number of customers in each segment
+
+# is subscription status independent from homeownership?
+# 1) construct two-2way table
+table(seg.df$subscribe, seg.df$ownHome)
+
+# 2) Test
+chisq.test(table(seg.df$subscribe, seg.df$ownHome))
+# With a p-value of 0.9187 we reject the null hypothesis and conclude that the factors are unrelated, being, that home ownership is independent of subscription status.
+
+
+# Remove Yate's correction to reflect binomial distribution
+chisq.test(table(seg.df$subscribe, seg.df$ownHome), correct = FALSE)
+#p-value drops to 0.7854, but still reject the null
+
+# Run 10,000 simulations for verfication of chisq.test
+chisq.test(table(seg.df$subscribe, seg.df$ownHome), sim = TRUE, B = 10000)
+# reject the null with p-value = 0.864  Factors remain independent
+
+
+```
+
+
+
+# 6.3 Testing Observed Proportions: binom.test() ----
+```{r}
+# basic binomial test for example
+binom.test(12, 20, p = .5)
+# with the 95% confidence interval falling between .36 and .81, and .5 falling within that range, we can conclude that with p-value = .5034 that there is no significant difference.
+
+#6.3.2 - More About binom.test() and Binomial Distributions
+binom.test(120, 200, p = 0.5)
+# with more observations and teh same proportion, the CI shrinks to .528 - .668.  The p-value also moves to 0.005685. These indicate that there is now a statisitically significant differnece between groups.
+
+# Testing: What are the odds that we would observe 8-12 out of 20, if the true rate is 50%?
+sum(dbinom(8:12, 20, 0.5))
+# we can see that there is a 73.7% chance that we would observe between 8 and 12 out of 20.
+
+# Now in a table
+library(binom)
+binom.confint(12, 20, metho = "ac")
+
+binom.confint(0, 20, method = "ac")
+# This shows that although no mixed cases were observed, there is a CI between 0 and 19% that a mixed group can exist.
+
+```
+
+# 6.4 Testing Group Means: t.test() ----
+```{r}
+# Exam for skew, discontinuities, and outliers
+hist(seg.df$income)
+with(seg.df, hist(income[ownHome == "ownYes"]))
+with(seg.df, hist(income[ownHome == "ownNo"]))
+
+# income response to ownHome explanatory
+t.test(income ~ ownHome, data = seg.df)
+# t statistic = -3.45 and p-value = .0006373  This means that the null hypothesis of no difference in income by home ownership is rejected This would suggest that folks who own their homes have higher income.
+# The 95% confidence interval is from -11,742 to -3,217.  We can have 95% confidence that the group difference is between these values
+# We can see that the resulting sample estimaate are a mean income of $47,410 for "ownNo" and $54,890 for "ownYes"
+
+
+# Is there a difference between teh travelers segment?
+t.test(income ~ ownHome, data = subset(seg.df, Segment == "Travelers"))
+# The confidence interval spans from -8,508 to 11,107 which includes 0.  This paired with a p-value of 0.79 shows that there is not a significant difference in mean income among travelers for travelers who own homes versus travelers who do not own homes.
+
+```
+
+# 6.5 Testing Multiple Group Means: ANOVA ----
+```{r}
+# is income related to home ownership, or to segment mebership, or both?
+
+# assign aov() model for homeowners
+seg.aov.own <- aov(income ~ ownHome, data = seg.df)
+
+# run anova
+anova(seg.aov.own)
+
+# assign aov model for Segment and run anova
+seg.aov.seg <- aov(income ~ Segment, data = seg.df)
+anova(seg.aov.seg)
+
+# both homeownership and segment have very small p-values.  Does this mean that a more complete model should include both?
+
+# run anove with  multiple variables
+anova(aov(income ~ Segment + ownHome, data = seg.df))
+# with this anova we can see that Segment is a significant predictor but home ownership is not.  This is different from prior testing which shows that segment and home ownership are not independent and teh effect is captured significantly by Segment
+
+
+# interaction effect, main effect, and both
+# a "+" only runs anova for main effect.  
+# a ":" runs anova for interaction effect
+# a "*" runs anova for both main effect and interatcion effect
+anova(aov(income ~ Segment * ownHome, data = seg.df))
+
+# 6.5.1 Model Comparison in ANOVA
+anova(aov(income ~ Segment, data = seg.df),
+      aov(income ~ Segment + ownHome, data = seg.df))
+# This model comparison shows that there is not much difference between the 2 models with a p-value of .5
+# Model comparison only makes sense in teh case of nested models. 
+
+# 6.5.2 Visualizing Group Confidence Intercals
+# Plotting CI for the group mean
+library(multcomp)
+#glht() = general linear hypothesis
+seg.aov <- aov(income ~ Segment, data = seg.df)
+glht(seg.aov)
+
+# removing the intercept and try again
+seg.aov <- aov(income ~ -1 + Segment, data = seg.df)
+glht(seg.aov)
+
+# plot the working model
+par(mar = c(6, 10, 2, 2)) # adjust the margins to preserve the labels
+plot(glht(seg.aov),
+     xlab = "Income", main = "Average Income by Segment (95% CI)")
+
+# 6.5.3 Variable Selection in ANOVA: Stepwise Modeling
+# AIC - Akaike Information Criterion
+# BIC - Bayesian Information Criterion
+# step() command automatically uses AIC to compare models on the basis of overall fir balances with model complexity
+seg.aov.step <- step(aov(income ~., data = seg.df))
+# we conclude that income ~ Segment is the best model
+
+# examine step()
+anova(seg.aov.step)
+# the results here are able to elucidate model selection well.  This is due to the small number of inputs to the model.  If we had hunderes or thousands of variable inputs to calculate per observation, we would resort to lasso or random forests.
+```
+
+
+# 6.6 Baysian ANOVA: Getting Started ----
+```{r}
+# Basics of Bayesian ANOVA
+library(BayesFactor)
+set.seed(96761)
+seg.bf1 <- lmBF(income ~ Segment, data = seg.df)
+
+# now make BayesFactor with Segment + ownHome
+seg.bf2 <- lmBF(income ~ Segment + ownHome, data = seg.df)
+
+# and compare bf1 to bf2
+seg.bf1 / seg.bf2
+#  The ratio of Bayes Factors is 6.18, meaning that the Segment only model is favroable to the Segment + ownHome model by a factor of 6.18
+
+# find model parameters and their credible ranges with posterior
+seg.bf.chain <- posterior(seg.bf1, 1, iterations = 10000)
+# select columns 1:6 because these are the parameters we care about
+plot(seg.bf.chain[, 1:6])
+# fat lines and normal distributions show that the model converged  and was stable.  This does not imply that the model is useful, but that it achieved stable estimates.  progress
+
+# 6.6.3 Inspecting Posterior Draws
+summary(seg.bf.chain)
+
+# the model estimates the overall value of mu and then estimates each segment as a deviation from that.  It is more useful to have direct estimates for the mean of each segment rather than a deviation from teh population mean.  We need to compute segment vales at that level and then summarize those estimates.
+head(seg.bf.chain)
+# index to double check 
+seg.bf.chain[1:4,1:5]
+seg.bf.chain[1:4,2:5] + seg.bf.chain[1:4, 1]
+
+# set within-draw estimates as an object and the get quantiles.
+seg.bf.chain.total <- seg.bf.chain[, 2:5] + seg.bf.chain[, 1]
+seg.bf.ci <- t(apply(seg.bf.chain.total, 2, quantile, pr = c(.025, .5, .975)))
+seg.bf.ci 
+
+
+# 6.6.4 Plotting the Bayesian Credible Intervals
+library(ggplot2)
+seg.bf.df <- data.frame(seg.bf.ci)
+seg.bf.df$Segment <- rownames(seg.bf.df)
+
+# add elements corresponding to the value of segement quartiles
+p <- ggplot(seg.bf.df, aes(x = Segment, y = X50., ymax = X97.5., ymin = X2.5.))
+
+# add points for the y-values and quantiles
+p <- p + geom_point(size = 4) + geom_errorbar(width = .2) + ylab("Income")
+
+# draw the plot
+p + ggtitle("95% CI for Mean Income by Segment") + coord_flip()
+
+```
